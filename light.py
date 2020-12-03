@@ -4,10 +4,16 @@ import logging
 import voluptuous as vol
 
 import homeassistant.helpers.config_validation as cv
-# Import the device class from the component that you want to support
 from homeassistant.components.light import (
-    ATTR_BRIGHTNESS, PLATFORM_SCHEMA, LightEntity)
+    ATTR_BRIGHTNESS,
+    PLATFORM_SCHEMA,
+    SUPPORT_BRIGHTNESS,
+    SUPPORT_COLOR,
+    SUPPORT_COLOR_TEMP,
+    SUPPORT_TRANSITION,
+    LightEntity)
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+import homeassistant.util.color as color_util
 
 from lifxlan import LifxLAN
 from lifxlan import MultiZoneLight
@@ -45,9 +51,14 @@ class LIFXVirtualLight(LightEntity):
         self._mz_light = mz_light
         self._zone_start = zone_start
         self._zone_end = zone_end
+
         self._name = "mansarda 1"
         self._state = None
+
+        self._is_on = False
         self._brightness = None
+        self._color_temp = None
+        self._hs_color = None
 
     @property
     def name(self):
@@ -55,14 +66,43 @@ class LIFXVirtualLight(LightEntity):
         return self._name
 
     @property
-    def brightness(self):
-        """Return the brightness of the light."""
-        return self._brightness
+    def unique_id(self):
+        """Return the unique id of this light."""
+        return "mansarda_1"
+
+    @property
+    def supported_featured(self):
+        return SUPPORT_BRIGHTNESS | SUPPORT_COLOR | SUPPORT_COLOR_TEMP | SUPPORT_TRANSITION
 
     @property
     def is_on(self):
         """Return true if light is on."""
         return self._state
+
+    @property
+    def brightness(self):
+        """Return the brightness of the light."""
+        return self._brightness
+
+    @property
+    def color_temp(self):
+        """Return the CT color value in mireds."""
+        return self._color_temp
+
+    @property
+    def max_mireds(self):
+        """Return the warmest color_temp that this light supports."""
+        return math.ceil(color_util.color_temperature_kelvin_to_mired(9000))
+
+    @property
+    def min_mireds(self):
+        """Return the coldest color_temp that this light supports."""
+        return math.ceil(color_util.color_temperature_kelvin_to_mired(2500))
+
+    @property
+    def hs_color(self):
+        """Return the hue and saturation color value [float, float]."""
+        return self._hs_color
 
     def turn_on(self, **kwargs):
         """Instruct the light to turn on."""
