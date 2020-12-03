@@ -18,13 +18,20 @@ import homeassistant.util.color as color_util
 from lifxlan import LifxLAN
 from lifxlan import MultiZoneLight
 
+from .const import (
+    DOMAIN,
+    CONF_TARGET_LIGHT,
+    CONF_ZONE_START,
+    CONF_ZONE_END
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required('name'): cv.string,
-    vol.Required('zone_start'): cv.string,
-    vol.Required('zone_end'): cv.string,
+    vol.Required(CONF_ZONE_START): cv.string,
+    vol.Required(CONF_ZONE_END): cv.string,
 })
 
 
