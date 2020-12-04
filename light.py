@@ -1,5 +1,6 @@
 """Platform for light integration."""
 import math
+import time
 from datetime import timedelta
 
 import logging
@@ -25,6 +26,7 @@ from lifxlan import MultiZoneLight
 
 from .const import (
     DOMAIN,
+    CONF_NAME,
     CONF_TARGET_LIGHT,
     CONF_ZONE_START,
     CONF_ZONE_END
@@ -36,37 +38,42 @@ SCAN_INTERVAL = timedelta(seconds=2)
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required('name'): cv.string,
-    vol.Required(CONF_ZONE_START): cv.string,
-    vol.Required(CONF_ZONE_END): cv.string,
+    vol.Required(CONF_NAME): cv.string,
+    vol.Required(CONF_TARGET_LIGHT ): cv.string,
+    vol.Required(CONF_ZONE_START): vol.Coerce(int),
+    vol.Required(CONF_ZONE_END): vol.Coerce(int),
 })
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     # Assign configuration variables.
     # The configuration check takes care they are present.
-    #host = config[CONF_HOST]
+
+    name = config[CONF_NAME]
+    target = config[CONF_TARGET_LIGHT]
+    zone_start = config[CONF_ZONE_START]
+    zone_end = config[CONF_ZONE_END]
 
     # Verify that passed in configuration works
-    if False:
-        _LOGGER.error("Could not connect to AwesomeLight hub")
+    if zone_end < zone_start:
+        _LOGGER.error("Zone end must be greater than or equal to zone start")
         return
 
-    # Add devices
-    target_light = MultiZoneLight("d0:73:d5:42:29:97", "10.18.0.194")
-
-    add_entities([LIFXVirtualLight(target_light, 0, 31)])
+    # Search for devices matching the target
+    target_light = MultiZoneLight(target, "10.18.0.194")
+    add_entities([LIFXVirtualLight(target_light, name, zone_start, zone_end)])
 
 
 class LIFXVirtualLight(LightEntity):
 
-    def __init__(self, mz_light, zone_start, zone_end):
+    def __init__(self, mz_light, name, zone_start, zone_end):
         """Initialize a Virtual Light."""
         self._mz_light = mz_light
+
+        self._name = name
         self._zone_start = zone_start
         self._zone_end = zone_end
 
-        self._name = "mansarda 1"
         self._state = [0, 0, 0, 0]
 
     @property
@@ -77,7 +84,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def unique_id(self):
         """Return the unique id of this light."""
-        return "mansarda_1"
+        return self._name
 
     @property
     def supported_features(self):
