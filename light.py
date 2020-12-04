@@ -120,7 +120,12 @@ class LIFXVirtualLight(LightEntity):
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
-        #self._light.turn_off()
+        h = 65535 * self._hs_color[0] / 360
+        s = 65535 * self._hs_color[1] / 100
+        k = math.ceil(color_util.color_temperature_mired_to_kelvin(self._color_temp))
+
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, 0, k], 500)
+        self._is_on = False
 
     def update(self):
         """Fetch new state data for this light."""
