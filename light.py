@@ -173,19 +173,19 @@ class LIFXVirtualLight(LightEntity):
             self._mz_light.set_zone_colors(list(map(lambda x: [x[0], x[1], 0, x[3]], self._mz_light.get_color_zones())))
             self._mz_light.set_power(True)
 
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k], 400)
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k])
 
         # Avoid state ping-pong by holding off updates as the state settles
-        time.sleep(0.5)
+        time.sleep(0.3)
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
         new_state = self._state
         new_state[2] = 0
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, new_state, 400)
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, new_state)
 
         # Avoid state ping-pong by holding off updates as the state settles
-        time.sleep(0.5)
+        time.sleep(0.3)
 
     def update(self):
         """Fetch new state data for this light."""
