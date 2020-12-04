@@ -65,12 +65,7 @@ class LIFXVirtualLight(LightEntity):
         self._zone_end = zone_end
 
         self._name = "mansarda 1"
-        self._state = None
-
-        self._is_on = False
-        self._brightness = None
-        self._color_temp = None
-        self._hs_color = None
+        self._state = [0, 0, 0, 0]
 
     @property
     def name(self):
@@ -89,17 +84,33 @@ class LIFXVirtualLight(LightEntity):
     @property
     def is_on(self):
         """Return true if light is on."""
-        return self._state
+        # Any brightness means light is on.
+        return self._state[2] > 0
+
+    @property
+    def hs_color(self):
+        """Return the hue and saturation color value [float, float]."""
+        h, s, _, _ = self._state
+        h = h / 65535 * 360
+        s = s / 65535 * 100
+        return (h, s) if s else None
 
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        return self._brightness
+        return convert_16_to_8(int(self._state[2] / 65535))
 
     @property
     def color_temp(self):
         """Return the CT color value in mireds."""
-        return self._color_temp
+        _, s, _, k = self._state
+
+        # If we got a saturation value, it means that light has
+        # a color set and no temperature (temperature requires
+        # light to be white, ie s == 0)
+        if s:
+            return None
+        return color_util.color_temperature_kelvin_to_mired(k)
 
     @property
     def max_mireds(self):
@@ -130,16 +141,15 @@ class LIFXVirtualLight(LightEntity):
             self._mz_light.set_power(True)
 
         self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k], 500)
-        self._is_on = True
+
+        # Avoid state ping-pong by holding off updates as the state settles
+        #time.sleep(0.3)
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
-        h = 65535 * self._hs_color[0] / 360
-        s = 65535 * self._hs_color[1] / 100
-        k = math.ceil(color_util.color_temperature_mired_to_kelvin(self._color_temp))
-
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, 0, k], 500)
-        self._is_on = False
+        new_state = self._state
+        new_state[2] = 0
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, new_state, 500)
 
     def update(self):
         """Fetch new state data for this light."""
@@ -155,14 +165,14 @@ class LIFXVirtualLight(LightEntity):
             brightness_values.add(zone[2])
             kelvin_values.add(zone[3])
 
-        h = sorted(list(hue_values))[-1] * 360 / 65535
-        s = sorted(list(saturation_values))[-1] * 100 / 65535
-        b = sorted(list(brightness_values))[-1] * 255 / 65535
-        k = math.ceil(color_util.color_temperature_kelvin_to_mired(sorted(list(kelvin_values))[-1]))
+        # Reduce the list to a single value. We mostly care
+        # about the brightness here, to determine whether the
+        # light is on. It's important the list is sorted.
+        # For the others, we might get any value.
+        h = sorted(list(hue_values))[-1]
+        s = sorted(list(saturation_values))[-1]
+        b = sorted(list(brightness_values))[-1]
+        k = sorted(list(kelvin_values))[-1]
 
-        self._hs_color = [h, s]
-        self._brightness = b
-        self._color_temp = k
-
-        self._is_on = sorted(list(brightness_values))[-1] > 0
+        self._state = [h, s, b, k]
 
