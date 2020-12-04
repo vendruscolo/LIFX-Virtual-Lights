@@ -1,5 +1,6 @@
 """Platform for light integration."""
 import math
+from datetime import timedelta
 
 import logging
 
@@ -28,6 +29,8 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+SCAN_INTERVAL = timedelta(seconds=2)
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
