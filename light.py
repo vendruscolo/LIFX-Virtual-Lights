@@ -98,7 +98,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        return convert_16_to_8(int(self._state[2] / 65535))
+        return self._state[2] / 65535 * 255
 
     @property
     def color_temp(self):
