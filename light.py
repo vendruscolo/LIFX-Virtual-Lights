@@ -46,6 +46,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_TURN_ON_BRIGHTNESS, default=255): vol.Coerce(int),
 })
 
+lifx = LifxLAN()
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     # Assign configuration variables.
@@ -63,8 +64,13 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         return
 
     # Search for devices matching the target
-    target_light = MultiZoneLight(target, "10.18.0.194")
-    add_entities([LIFXVirtualLight(target_light, name, zone_start, zone_end, turn_on_brightness)])
+    multizone_lights = lifx.get_multizone_lights()
+    matching_lights = list(filter(lambda x: x.get_mac_addr() == target, multizone_lights))
+    if len(matching_lights) == 0:
+        _LOGGER.error("Did not find any matching light. Possibly offline? " + target)
+        return
+
+    add_entities([LIFXVirtualLight(matching_lights[0], name, zone_start, zone_end, turn_on_brightness)])
 
 
 class LIFXVirtualLight(LightEntity):
@@ -89,7 +95,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def unique_id(self):
         """Return the unique id of this light."""
-        return self._name
+        return self._name + self._mz_light.get_mac_addr()
 
     @property
     def supported_features(self):
