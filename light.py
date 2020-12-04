@@ -46,6 +46,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 })
 
 lifx = LifxLAN()
+lifx.discover_devices()
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     # Assign configuration variables.
