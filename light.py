@@ -29,7 +29,8 @@ from .const import (
     CONF_NAME,
     CONF_TARGET_LIGHT,
     CONF_ZONE_START,
-    CONF_ZONE_END
+    CONF_ZONE_END,
+    CONF_TURN_ON_BRIGHTNESS
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_TARGET_LIGHT ): cv.string,
     vol.Required(CONF_ZONE_START): vol.Coerce(int),
     vol.Required(CONF_ZONE_END): vol.Coerce(int),
+    vol.Optional(CONF_TURN_ON_BRIGHTNESS, default=255): vol.Coerce(int),
 })
 
 
@@ -53,6 +55,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     target = config[CONF_TARGET_LIGHT]
     zone_start = config[CONF_ZONE_START]
     zone_end = config[CONF_ZONE_END]
+    turn_on_brightness = config[CONF_TURN_ON_BRIGHTNESS]
 
     # Verify that passed in configuration works
     if zone_end < zone_start:
@@ -61,18 +64,20 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 
     # Search for devices matching the target
     target_light = MultiZoneLight(target, "10.18.0.194")
-    add_entities([LIFXVirtualLight(target_light, name, zone_start, zone_end)])
+    add_entities([LIFXVirtualLight(target_light, name, zone_start, zone_end, turn_on_brightness)])
 
 
 class LIFXVirtualLight(LightEntity):
 
-    def __init__(self, mz_light, name, zone_start, zone_end):
+    def __init__(self, mz_light, name, zone_start, zone_end, turn_on_brightness):
         """Initialize a Virtual Light."""
         self._mz_light = mz_light
 
         self._name = name
         self._zone_start = zone_start
         self._zone_end = zone_end
+
+        self._turn_on_brightness = turn_on_brightness
 
         self._state = [0, 0, 0, 0]
 
@@ -147,7 +152,7 @@ class LIFXVirtualLight(LightEntity):
         # color/brighthess. It's not possible to move from being off to a
         # different colored light.
         if b < 1:
-            b = 65535
+            b = self._turn_on_brightness / 255 * 65535
 
         if ATTR_HS_COLOR in kwargs:
             hue, saturation = kwargs[ATTR_HS_COLOR]
