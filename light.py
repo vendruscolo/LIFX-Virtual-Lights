@@ -1,4 +1,6 @@
 """Platform for light integration."""
+import math
+
 import logging
 
 import voluptuous as vol
@@ -122,6 +124,26 @@ class LIFXVirtualLight(LightEntity):
 
     def update(self):
         """Fetch new state data for this light."""
-        #self._light.update()
-        self._state = True
-        self._brightness = 42
+        zones = self._mz_light.get_color_zones()
+
+        hue_values = set()
+        saturation_values = set()
+        brightness_values = set()
+        kelvin_values = set()
+        for zone in zones[self._zone_start:self._zone_end]:
+            hue_values.add(zone[0])
+            saturation_values.add(zone[1])
+            brightness_values.add(zone[2])
+            kelvin_values.add(zone[3])
+
+        h = sorted(list(hue_values))[-1] * 360 / 65535
+        s = sorted(list(saturation_values))[-1] * 100 / 65535
+        b = sorted(list(brightness_values))[-1] * 255 / 65535
+        k = math.ceil(color_util.color_temperature_kelvin_to_mired(sorted(list(kelvin_values))[-1]))
+
+        self._hs_color = [h, s]
+        self._brightness = b
+        self._color_temp = k
+
+        self._is_on = sorted(list(brightness_values))[-1] > 0
+
