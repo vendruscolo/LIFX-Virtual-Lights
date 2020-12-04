@@ -115,8 +115,13 @@ class LIFXVirtualLight(LightEntity):
 
     def turn_on(self, **kwargs):
         """Instruct the light to turn on."""
-        #self._light.brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-        #self._light.turn_on()
+        h = 65535
+        s = 65535
+        b = 65535
+        k = 3500
+
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k], 500)
+        self._is_on = True
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
