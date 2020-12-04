@@ -120,6 +120,12 @@ class LIFXVirtualLight(LightEntity):
         b = 65535
         k = 3500
 
+        # if the ligth was turned off, we want to power it and start
+        # with all zones dimmed down.
+        if self._mz_light.get_power() < 1:
+            self._mz_light.set_zone_colors(list(map(lambda x: [x[0], x[1], 0, x[3]], self._mz_light.get_color_zones())))
+            self._mz_light.set_power(True)
+
         self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k], 500)
         self._is_on = True
 
