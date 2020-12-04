@@ -9,6 +9,8 @@ import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_HS_COLOR,
+    ATTR_COLOR_TEMP,
     PLATFORM_SCHEMA,
     SUPPORT_BRIGHTNESS,
     SUPPORT_COLOR,
@@ -78,7 +80,8 @@ class LIFXVirtualLight(LightEntity):
         return "mansarda_1"
 
     @property
-    def supported_featured(self):
+    def supported_features(self):
+        """Flag supported features."""
         return SUPPORT_BRIGHTNESS | SUPPORT_COLOR | SUPPORT_COLOR_TEMP | SUPPORT_TRANSITION
 
     @property
@@ -115,24 +118,42 @@ class LIFXVirtualLight(LightEntity):
     @property
     def max_mireds(self):
         """Return the warmest color_temp that this light supports."""
-        return math.ceil(color_util.color_temperature_kelvin_to_mired(9000))
+        return math.ceil(color_util.color_temperature_kelvin_to_mired(2500))
 
     @property
     def min_mireds(self):
         """Return the coldest color_temp that this light supports."""
-        return math.ceil(color_util.color_temperature_kelvin_to_mired(2500))
-
-    @property
-    def hs_color(self):
-        """Return the hue and saturation color value [float, float]."""
-        return self._hs_color
+        return math.ceil(color_util.color_temperature_kelvin_to_mired(9000))
 
     def turn_on(self, **kwargs):
         """Instruct the light to turn on."""
-        h = 65535
-        s = 65535
-        b = 65535
-        k = 3500
+
+        # Grab the current state, and update that so it's consistent.
+        h, s, b, k = self._state
+
+        # We're turning on the light, which means that if it was 0, it was
+        # previously turned off by the user (see turn_off).
+        # So, if user is switching it on, bring it to full light. If it's
+        # tweaking the setup (with the light already on), this value will be
+        # eventually updated.
+        # The flow is: turn off (b=0) -> turn on (b=255) -> change
+        # color/brighthess. It's not possible to move from being off to a
+        # different colored light.
+        if b < 1:
+            b = 65535
+
+        if ATTR_HS_COLOR in kwargs:
+            hue, saturation = kwargs[ATTR_HS_COLOR]
+            h = int(hue / 360 * 65535)
+            s = int(saturation / 100 * 65535)
+            k = 3500
+
+        if ATTR_BRIGHTNESS in kwargs:
+            b = kwargs[ATTR_BRIGHTNESS] / 255 * 65535
+
+        if ATTR_COLOR_TEMP in kwargs:
+            s = 0
+            k = math.ceil(color_util.color_temperature_mired_to_kelvin(kwargs[ATTR_COLOR_TEMP]))
 
         # if the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
