@@ -63,21 +63,16 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         _LOGGER.error("Zone end must be greater than or equal to zone start")
         return
 
-    # Search for devices matching the target
-    multizone_lights = lifx.get_multizone_lights()
-    matching_lights = list(filter(lambda x: x.get_mac_addr() == target, multizone_lights))
-    if len(matching_lights) == 0:
-        _LOGGER.error("Did not find any matching light. Possibly offline? " + target)
-        return
-
-    add_entities([LIFXVirtualLight(matching_lights[0], name, zone_start, zone_end, turn_on_brightness)])
+    add_entities([LIFXVirtualLight(target, name, zone_start, zone_end, turn_on_brightness)])
 
 
 class LIFXVirtualLight(LightEntity):
 
-    def __init__(self, mz_light, name, zone_start, zone_end, turn_on_brightness):
+    def __init__(self, target_mac_address, name, zone_start, zone_end, turn_on_brightness):
         """Initialize a Virtual Light."""
-        self._mz_light = mz_light
+        self._target_mac_address = target_mac_address
+        self._mz_light = None
+        self._available = False
 
         self._name = name
         self._zone_start = zone_start
@@ -95,7 +90,12 @@ class LIFXVirtualLight(LightEntity):
     @property
     def unique_id(self):
         """Return the unique id of this light."""
-        return self._name + self._mz_light.get_mac_addr()
+        return self._name + "." + self._target_mac_address
+
+    @property
+    def available(self):
+        """Indicate if Home Assistant is able to read the state and control the underlying device."""
+        return self._available
 
     @property
     def supported_features(self):
@@ -173,7 +173,7 @@ class LIFXVirtualLight(LightEntity):
             s = 0
             k = math.ceil(color_util.color_temperature_mired_to_kelvin(kwargs[ATTR_COLOR_TEMP]))
 
-        # if the ligth was turned off, we want to power it and start
+        # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
         if self._mz_light.get_power() < 1:
             self._mz_light.set_zone_colors(list(map(lambda x: [x[0], x[1], 0, x[3]], self._mz_light.get_color_zones())))
@@ -190,11 +190,32 @@ class LIFXVirtualLight(LightEntity):
         new_state[2] = 0
         self._mz_light.set_zone_color(self._zone_start, self._zone_end, new_state)
 
+        # If the strip has no zones whose brightness is >=0 we can turn the
+        # whole strip off.
+        zones_lit = list(filter(lambda x: x[2] > 0, self._mz_light.get_color_zones()))
+        if len(zones_lit) == 0:
+            self._mz_light.set_power(False)
+
         # Avoid state ping-pong by holding off updates as the state settles
         time.sleep(0.3)
 
     def update(self):
         """Fetch new state data for this light."""
+
+        if self._mz_light is None:
+            multizone_lights = lifx.get_multizone_lights()
+            _LOGGER.error("Found mz lights: " + str(len(multizone_lights)))
+            matching_lights = list(filter(lambda x: x.get_mac_addr() == self._target_mac_address, multizone_lights))
+            
+            if len(matching_lights) == 0:
+                _LOGGER.error("Did not find any matching light. Possibly offline? " + self._target_mac_address)
+                self._available = False
+                return
+
+            self._mz_light = matching_lights[0]
+
+        self._available = True
+
         zones = self._mz_light.get_color_zones()
 
         hue_values = set()
