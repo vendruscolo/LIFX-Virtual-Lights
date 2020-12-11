@@ -80,7 +80,9 @@ class LIFXVirtualLight(LightEntity):
 
         self._turn_on_brightness = turn_on_brightness
 
-        self._state = [0, 0, 0, 0]
+        self._current_power_level = 0
+        self._current_color_zones = []
+        self._hsbk = [0, 0, 0, 0]
 
     @property
     def name(self):
@@ -106,12 +108,12 @@ class LIFXVirtualLight(LightEntity):
     def is_on(self):
         """Return true if light is on."""
         # Any brightness means light is on.
-        return self._state[2] > 0
+        return self._hsbk[2] > 0
 
     @property
     def hs_color(self):
         """Return the hue and saturation color value [float, float]."""
-        h, s, _, _ = self._state
+        h, s, _, _ = self._hsbk
         h = h / 65535 * 360
         s = s / 65535 * 100
         return (h, s) if s else None
@@ -119,12 +121,12 @@ class LIFXVirtualLight(LightEntity):
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        return self._state[2] / 65535 * 255
+        return self._hsbk[2] / 65535 * 255
 
     @property
     def color_temp(self):
         """Return the CT color value in mireds."""
-        _, s, _, k = self._state
+        _, s, _, k = self._hsbk
 
         # If we got a saturation value, it means that light has
         # a color set and no temperature (temperature requires
@@ -147,7 +149,7 @@ class LIFXVirtualLight(LightEntity):
         """Instruct the light to turn on."""
 
         # Grab the current state, and update that so it's consistent.
-        h, s, b, k = self._state
+        h, s, b, k = self._hsbk
 
         # We're turning on the light, which means that if it was 0, it was
         # previously turned off by the user (see turn_off).
@@ -175,8 +177,8 @@ class LIFXVirtualLight(LightEntity):
 
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
-        if self._mz_light.get_power() < 1:
-            self._mz_light.set_zone_colors(list(map(lambda x: [x[0], x[1], 0, x[3]], self._mz_light.get_color_zones())))
+        if self._current_power_level < 1:
+            self._mz_light.set_zone_colors(list(map(lambda x: [x[0], x[1], 0, x[3]], self._current_color_zones)))
             self._mz_light.set_power(True)
 
         self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k])
@@ -186,7 +188,7 @@ class LIFXVirtualLight(LightEntity):
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
-        new_state = self._state
+        new_state = self._hsbk
         new_state[2] = 0
         self._mz_light.set_zone_color(self._zone_start, self._zone_end, new_state)
 
@@ -216,13 +218,14 @@ class LIFXVirtualLight(LightEntity):
 
         self._available = True
 
-        zones = self._mz_light.get_color_zones()
+        self._current_power_level = self._mz_light.get_power()
+        self._current_color_zones = self._mz_light.get_color_zones()
 
         hue_values = set()
         saturation_values = set()
         brightness_values = set()
         kelvin_values = set()
-        for zone in zones[self._zone_start:self._zone_end]:
+        for zone in self._current_color_zones[self._zone_start:self._zone_end]:
             hue_values.add(zone[0])
             saturation_values.add(zone[1])
             brightness_values.add(zone[2])
@@ -237,5 +240,5 @@ class LIFXVirtualLight(LightEntity):
         b = sorted(list(brightness_values))[-1]
         k = sorted(list(kelvin_values))[-1]
 
-        self._state = [h, s, b, k]
+        self._hsbk = [h, s, b, k]
 
