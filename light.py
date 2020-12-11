@@ -80,7 +80,6 @@ class LIFXVirtualLight(LightEntity):
 
         self._turn_on_brightness = turn_on_brightness
 
-        self._current_power_level = 0
         self._current_color_zones = []
         self._hsbk = [0, 0, 0, 0]
 
@@ -177,7 +176,10 @@ class LIFXVirtualLight(LightEntity):
 
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
-        if self._current_power_level < 1:
+        # Note that we're cheating here, we set the whole strip to the same
+        # color (brightness 0) so it's faster. In the past we set each zone
+        # brightness to 0, but that causes more network traffic.
+        if self._mz_light.get_power() < 1:
             self._mz_light.set_color([h, s, 0, k])
             self._mz_light.set_power(True)
 
@@ -218,7 +220,6 @@ class LIFXVirtualLight(LightEntity):
 
         self._available = True
 
-        self._current_power_level = self._mz_light.get_power()
         self._current_color_zones = self._mz_light.get_color_zones()
 
         hue_values = set()
