@@ -190,13 +190,19 @@ class LIFXVirtualLight(LightEntity):
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
-        new_state = self._hsbk
-        new_state[2] = 0
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, new_state)
+
+        # Set brightness to 0 and update the state (both the reduced
+        # one and the whole strip).
+        self._hsbk[2] = 0
+        for i in range(self._zone_start, self._zone_end):
+            self._current_color_zones[i] = self._hsbk
+
+        # Effectively set the state on the srip.
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, self._hsbk)
 
         # If the strip has no zones whose brightness is >=0 we can turn the
         # whole strip off.
-        zones_lit = list(filter(lambda x: x[2] > 0, self._mz_light.get_color_zones()))
+        zones_lit = list(filter(lambda x: x[2] > 0, self._current_color_zones))
         if len(zones_lit) == 0:
             self._mz_light.set_power(False)
 
