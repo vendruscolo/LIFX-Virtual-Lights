@@ -91,7 +91,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def unique_id(self):
         """Return the unique id of this light."""
-        return self._name + "." + self._target_mac_address
+        return self._target_mac_address + "|" + str(self._zone_start) + "|" + str(self._zone_end)
 
     @property
     def available(self):
