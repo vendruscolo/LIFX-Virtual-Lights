@@ -181,7 +181,7 @@ class LIFXVirtualLight(LightEntity):
             self._mz_light.set_color([h, s, 0, k])
             self._mz_light.set_power(True)
 
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k])
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k], 500)
 
         # Avoid state ping-pong by holding off updates as the state settles
         time.sleep(0.3)
