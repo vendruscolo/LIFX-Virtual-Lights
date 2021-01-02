@@ -198,7 +198,7 @@ class LIFXVirtualLight(LightEntity):
             self._current_color_zones[i] = self._hsbk
 
         # Effectively set the state on the srip.
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, self._hsbk)
+        self._mz_light.set_zone_color(self._zone_start, self._zone_end, self._hsbk, 500)
 
         # If the strip has no zones whose brightness is >=0 we can turn the
         # whole strip off.
