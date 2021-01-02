@@ -82,6 +82,7 @@ class LIFXVirtualLight(LightEntity):
 
         self._current_color_zones = []
         self._hsbk = [0, 0, 0, 0]
+        self._running_effect = False
 
     @property
     def name(self):
@@ -191,6 +192,11 @@ class LIFXVirtualLight(LightEntity):
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
 
+        # First of all, stop any firmware effect running
+        if self._running_effect:
+            self._mz_light.set_multizone_effect(0, 0, 500)
+            self._running_effect = False
+
         # Set brightness to 0 and update the state (both the reduced
         # one and the whole strip).
         self._hsbk[2] = 0
@@ -264,4 +270,14 @@ class LIFXVirtualLight(LightEntity):
         k = sorted(list(kelvin_values))[-1]
 
         self._hsbk = [h, s, b, k]
+
+        # Cache any running effect. Note that these are firmware
+        # effects. 0 is the hardcoded (by official LIFX LAN protocol)
+        # effect id.
+        try:
+            effect = self._mz_light.get_multizone_effect()
+            self._running_effect = effect["type"] != 0
+        except:
+            _LOGGER.error("Received error while updating firmware effect. Assuming no effects are running. " + self._target_mac_address)
+            self._running_effect = False
 
