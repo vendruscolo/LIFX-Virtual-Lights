@@ -175,6 +175,8 @@ class LIFXVirtualLight(LightEntity):
             s = 0
             k = math.ceil(color_util.color_temperature_mired_to_kelvin(kwargs[ATTR_COLOR_TEMP]))
 
+        self.stop_running_effect_if_needed()
+
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
         # Note that we're cheating here, we set the whole strip to the same
@@ -192,10 +194,7 @@ class LIFXVirtualLight(LightEntity):
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
 
-        # First of all, stop any firmware effect running
-        if self._running_effect:
-            self._mz_light.set_multizone_effect(0, 0, 500)
-            self._running_effect = False
+        self.stop_running_effect_if_needed()
 
         # Set brightness to 0 and update the state (both the reduced
         # one and the whole strip).
@@ -279,5 +278,10 @@ class LIFXVirtualLight(LightEntity):
             self._running_effect = effect["type"] != 0
         except:
             _LOGGER.error("Received error while updating firmware effect. Assuming no effects are running. " + self._target_mac_address)
+            self._running_effect = False
+
+    def stop_running_effect_if_needed(self):
+        if self._running_effect:
+            self._mz_light.set_multizone_effect(0, 0, 500)
             self._running_effect = False
 
