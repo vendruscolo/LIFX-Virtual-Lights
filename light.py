@@ -212,21 +212,37 @@ class LIFXVirtualLight(LightEntity):
     def update(self):
         """Fetch new state data for this light."""
 
+        # We have no light, because we're starting up or because the
+        # light went offline earlier. Try to find it again by filtering
+        # the whole LAN.
         if self._mz_light is None:
             multizone_lights = lifx.get_multizone_lights()
-            _LOGGER.error("Found mz lights: " + str(len(multizone_lights)))
+            _LOGGER.info("Found mz lights: " + str(len(multizone_lights)))
             matching_lights = list(filter(lambda x: x.get_mac_addr() == self._target_mac_address, multizone_lights))
             
             if len(matching_lights) == 0:
                 _LOGGER.error("Did not find any matching light. Possibly offline? " + self._target_mac_address)
+                self._mz_light = None
                 self._available = False
                 return
 
             self._mz_light = matching_lights[0]
 
-        self._available = True
+        # At this point, we should have a valid light (cached). Use
+        # a try block to catch the exception, which means that the
+        # device is offline (well, it might mean something else depending
+        # on the actual exception, but 99% is that and the only thing we
+        # can do is to try the whole thing again anyway).
+        try:
+            self._current_color_zones = self._mz_light.get_color_zones()
+        except:
+            _LOGGER.error("Received error while updating color zones. Possibly offline? " + self._target_mac_address)
+            self._mz_light = None
+            self._available = False
+            return
 
-        self._current_color_zones = self._mz_light.get_color_zones()
+        # Yay!
+        self._available = True
 
         hue_values = set()
         saturation_values = set()
