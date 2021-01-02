@@ -4,5 +4,5 @@
   "documentation": "https://github.com/home-assistant/example-custom-config/tree/master/custom_components/example_light/",
   "dependencies": [],
   "codeowners": [],
-  "requirements": ["lifxlan==1.2.5"]
+  "requirements": []
 }

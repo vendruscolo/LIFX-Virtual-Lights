@@ -20,8 +20,8 @@ from homeassistant.components.light import (
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 import homeassistant.util.color as color_util
 
-from lifxlan import LifxLAN
-from lifxlan import MultiZoneLight
+from .lifxlan import LifxLAN
+from .lifxlan import MultiZoneLight
 
 from .const import (
     DOMAIN,
