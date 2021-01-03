@@ -15,8 +15,14 @@ Add the following entry in your `configuration.yaml`:
 
 ```yaml
 light:
-  - platform: awesome_lights
-    host: HOST_HERE
-    username: USERNAME_HERE
-    password: PASSWORD_HERE_OR_secrets.yaml
+  - platform: lifx_virtual_lights
+    name: Name of entity
+    target_light: "<mac:address:of:target:light>"
+    zone_start: 0
+    zone_end: 31
+  - platform: lifx_virtual_lights
+    name: Name of entity
+    target_light: "<mac:address:of:target:light>"
+    zone_start: 16
+    zone_end: 31
 ```
