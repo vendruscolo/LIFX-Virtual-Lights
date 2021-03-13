@@ -2,6 +2,7 @@
 import math
 import time
 from datetime import timedelta
+import asyncio
 
 import logging
 
@@ -20,8 +21,10 @@ from homeassistant.components.light import (
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 import homeassistant.util.color as color_util
 
-from .lifxlan import LifxLAN
-from .lifxlan import MultiZoneLight
+from photons_app.executor import library_setup
+from photons_messages import DeviceMessages
+from photons_messages import MultiZoneMessages
+from photons_app.special import HardCodedSerials
 
 from .const import (
     DOMAIN,
@@ -45,15 +48,15 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_TURN_ON_BRIGHTNESS, default=255): vol.Coerce(int),
 })
 
-lifx = LifxLAN()
-lifx.discover_devices()
+collector = library_setup()
+lan_target = collector.resolve_target("lan")
 
-def setup_platform(hass, config, add_entities, discovery_info=None):
+async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     # Assign configuration variables.
     # The configuration check takes care they are present.
 
     name = config[CONF_NAME]
-    target = config[CONF_TARGET_LIGHT]
+    mac_address = config[CONF_TARGET_LIGHT]
     zone_start = config[CONF_ZONE_START]
     zone_end = config[CONF_ZONE_END]
     turn_on_brightness = config[CONF_TURN_ON_BRIGHTNESS]
@@ -63,23 +66,29 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         _LOGGER.error("Zone end must be greater than or equal to zone start")
         return
 
-    add_entities([LIFXVirtualLight(target, name, zone_start, zone_end, turn_on_brightness)])
+    sender = await lan_target.make_sender()
+
+    async_add_entities([LIFXVirtualLight(lan_target, sender, mac_address, name, zone_start, zone_end, turn_on_brightness)])
 
 
 class LIFXVirtualLight(LightEntity):
 
-    def __init__(self, target_mac_address, name, zone_start, zone_end, turn_on_brightness):
+    def __init__(self, lan_target, sender, mac_address, name, zone_start, zone_end, turn_on_brightness):
         """Initialize a Virtual Light."""
-        self._target_mac_address = target_mac_address
-        self._mz_light = None
-        self._available = False
 
+        # Deps
+        self._lan_target = lan_target
+        self._sender = sender
+
+        # Conf
+        self._mac_address = mac_address
         self._name = name
         self._zone_start = zone_start
         self._zone_end = zone_end
-
         self._turn_on_brightness = turn_on_brightness
 
+        # Cached values
+        self._available = False
         self._current_color_zones = []
         self._hsbk = [0, 0, 0, 0]
         self._running_effect = False
@@ -92,7 +101,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def unique_id(self):
         """Return the unique id of this light."""
-        return self._target_mac_address + "|" + str(self._zone_start) + "|" + str(self._zone_end)
+        return self._mac_address + "|" + str(self._zone_start) + "|" + str(self._zone_end)
 
     @property
     def available(self):
@@ -107,12 +116,14 @@ class LIFXVirtualLight(LightEntity):
     @property
     def is_on(self):
         """Return true if light is on."""
+        return False
         # Any brightness means light is on.
         return self._hsbk[2] > 0
 
     @property
     def hs_color(self):
         """Return the hue and saturation color value [float, float]."""
+        return None
         h, s, _, _ = self._hsbk
         h = h / 65535 * 360
         s = s / 65535 * 100
@@ -121,11 +132,13 @@ class LIFXVirtualLight(LightEntity):
     @property
     def brightness(self):
         """Return the brightness of the light."""
+        return 0
         return self._hsbk[2] / 65535 * 255
 
     @property
     def color_temp(self):
         """Return the CT color value in mireds."""
+        return None
         _, s, _, k = self._hsbk
 
         # If we got a saturation value, it means that light has
@@ -147,6 +160,7 @@ class LIFXVirtualLight(LightEntity):
 
     def turn_on(self, **kwargs):
         """Instruct the light to turn on."""
+        return
 
         # Grab the current state, and update that so it's consistent.
         h, s, b, k = self._hsbk
@@ -193,6 +207,7 @@ class LIFXVirtualLight(LightEntity):
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
+        return
 
         self.stop_running_effect_if_needed()
 
@@ -216,6 +231,7 @@ class LIFXVirtualLight(LightEntity):
 
     def update(self):
         """Fetch new state data for this light."""
+        return
 
         # We have no light, because we're starting up or because the
         # light went offline earlier. Try to find it again by filtering
@@ -281,6 +297,7 @@ class LIFXVirtualLight(LightEntity):
             self._running_effect = False
 
     def stop_running_effect_if_needed(self):
+        return
         if self._running_effect:
             self._mz_light.set_multizone_effect(0, 0, 500)
             self._running_effect = False
