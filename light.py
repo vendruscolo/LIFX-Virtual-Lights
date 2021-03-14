@@ -201,29 +201,20 @@ class LIFXVirtualLight(LightEntity):
                     await self._sender(DeviceMessages.SetPower(level=65535), self._reference)
                 await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k), self._reference)
 
-    def turn_off(self, **kwargs):
+    async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
+        h, s, b, k = self._hsbk
+        s = saturation_ha_to_photons(s)
+
+        # Set the same HSBK, with a 0 brightness
+        await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
+
         return
-
-        self.stop_running_effect_if_needed()
-
-        # Set brightness to 0 and update the state (both the reduced
-        # one and the whole strip).
-        self._hsbk[2] = 0
-        for i in range(self._zone_start, self._zone_end):
-            self._current_color_zones[i] = self._hsbk
-
-        # Effectively set the state on the srip.
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, self._hsbk, 500)
-
         # If the strip has no zones whose brightness is >=0 we can turn the
         # whole strip off.
         zones_lit = list(filter(lambda x: x[2] > 0, self._current_color_zones))
         if len(zones_lit) == 0:
             self._mz_light.set_power(False)
-
-        # Avoid state ping-pong by holding off updates as the state settles
-        time.sleep(0.3)
 
     async def async_update(self):
         """Fetch new state data for this light."""
