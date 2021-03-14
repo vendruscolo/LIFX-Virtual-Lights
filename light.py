@@ -1,8 +1,9 @@
 """Platform for light integration."""
 import math
 import time
-from datetime import timedelta
 import asyncio
+from datetime import timedelta
+from collections import namedtuple
 
 import logging
 
@@ -48,6 +49,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_TURN_ON_BRIGHTNESS, default=255): vol.Coerce(int),
 })
 
+HSBK = namedtuple('HSBK', ['h', 's', 'b', 'k'])
+
 collector = library_setup()
 lan_target = collector.resolve_target("lan")
 
@@ -91,7 +94,7 @@ class LIFXVirtualLight(LightEntity):
         # Cached values
         self._available = False
         self._current_color_zones = []
-        self._hsbk = [0, 0, 0, 0]
+        self._hsbk = HSBK(0, 0, 0, 0)
         self._running_effect = False
 
     @property
@@ -118,30 +121,29 @@ class LIFXVirtualLight(LightEntity):
     def is_on(self):
         """Return true if light is on."""
         # Any brightness means light is on.
-        return self._hsbk[2] > 0
+        return self._hsbk.b > 0
 
     @property
     def hs_color(self):
         """Return the hue and saturation color value [float, float]."""
-        h, s, _, _ = self._hsbk
-        return (h, s) if s else None
+        if self._hsbk.s:
+            return (self._hsbk.h, self._hsbk.s)
+        return None
 
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        return self._hsbk[2]
+        return self._hsbk.b
 
     @property
     def color_temp(self):
         """Return the CT color value in mireds."""
-        _, s, _, k = self._hsbk
-
         # If we got a saturation value, it means that light has
         # a color set and no temperature (temperature requires
         # light to be white, ie s == 0)
-        if s:
+        if self._hsbk.s:
             return None
-        return color_util.color_temperature_kelvin_to_mired(k)
+        return color_util.color_temperature_kelvin_to_mired(self._hsbk.k)
 
     @property
     def max_mireds(self):
@@ -265,7 +267,7 @@ class LIFXVirtualLight(LightEntity):
         b = brightness_photons_to_ha(sorted(list(brightness_values))[-1])
         k = sorted(list(kelvin_values))[-1]
 
-        self._hsbk = [h, s, b, k]
+        self._hsbk = HSBK(h, s, b, k)
 
 def brightness_photons_to_ha(value):
     return value * 255
