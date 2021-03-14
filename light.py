@@ -209,12 +209,20 @@ class LIFXVirtualLight(LightEntity):
         # Set the same HSBK, with a 0 brightness
         await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
 
-        return
-        # If the strip has no zones whose brightness is >=0 we can turn the
-        # whole strip off.
-        zones_lit = list(filter(lambda x: x[2] > 0, self._current_color_zones))
-        if len(zones_lit) == 0:
-            self._mz_light.set_power(False)
+        # At this point our zones are dark, we want to turn the whole strip
+        # off if there's no zone lit. Get the full zones, and if there are
+        # no zones lit, turn the whole thing off.
+        # We request up to index 80 as LIFX Z have 8 zones/m and you can
+        # chain up to 10m.
+        any_zone_lit = False
+        async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=0, end_index=80), self._reference):
+            if pkt | MultiZoneMessages.StateMultiZone:
+                for zone in pkt.payload.colors:
+                    if zone.brightness:
+                        any_zone_lit = True
+
+        if any_zone_lit == False:
+            await self._sender(DeviceMessages.SetPower(level=0), self._reference)
 
     async def async_update(self):
         """Fetch new state data for this light."""
