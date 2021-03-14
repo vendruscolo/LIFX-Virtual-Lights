@@ -219,7 +219,10 @@ class LIFXVirtualLight(LightEntity):
     async def async_update(self):
         """Fetch new state data for this light."""
 
-        color_zones = []
+        hue_values = set()
+        saturation_values = set()
+        brightness_values = set()
+        kelvin_values = set()
 
         # At this point, we should have a valid light (cached). Use
         # a try block to catch the exception, which means that the
@@ -229,24 +232,26 @@ class LIFXVirtualLight(LightEntity):
         try:
             async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._reference):
                 if pkt | MultiZoneMessages.StateMultiZone:
-                    color_zones = pkt.payload.colors
+                    # Photons is sending back zones grouped by 8. This means
+                    # that we may receive more zones than we requested.
+                    last_zone = len(pkt.payload.colors)
+                    end_zone = pkt.payload.zone_index + last_zone
+                    if end_zone > self._zone_end:
+                        last_zone = self._zone_end - pkt.payload.zone_index
+
+                    for zone in pkt.payload.colors[0:last_zone]:
+                        hue_values.add(zone.hue)
+                        saturation_values.add(zone.saturation)
+                        brightness_values.add(zone.brightness)
+                        kelvin_values.add(zone.kelvin)
         except:
             _LOGGER.error("Received error while updating color zones. Possibly offline? " + self._mac_address)
             self._available = False
             return
 
+
         # Yay!
         self._available = True
-
-        hue_values = set()
-        saturation_values = set()
-        brightness_values = set()
-        kelvin_values = set()
-        for zone in color_zones:
-            hue_values.add(zone.hue)
-            saturation_values.add(zone.saturation)
-            brightness_values.add(zone.brightness)
-            kelvin_values.add(zone.kelvin)
 
         # Reduce the list to a single value. We mostly care
         # about the brightness here, to determine whether the
