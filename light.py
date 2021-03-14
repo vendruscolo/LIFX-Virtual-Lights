@@ -66,19 +66,20 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         _LOGGER.error("Zone end must be greater than or equal to zone start")
         return
 
+    reference = collector.reference_object(mac_address)
     sender = await lan_target.make_sender()
 
-    async_add_entities([LIFXVirtualLight(lan_target, sender, mac_address, name, zone_start, zone_end, turn_on_brightness)])
+    async_add_entities([LIFXVirtualLight(sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness)])
 
 
 class LIFXVirtualLight(LightEntity):
 
-    def __init__(self, lan_target, sender, mac_address, name, zone_start, zone_end, turn_on_brightness):
+    def __init__(self, sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness):
         """Initialize a Virtual Light."""
 
         # Deps
-        self._lan_target = lan_target
         self._sender = sender
+        self._reference = reference
 
         # Conf
         self._mac_address = mac_address
@@ -116,29 +117,23 @@ class LIFXVirtualLight(LightEntity):
     @property
     def is_on(self):
         """Return true if light is on."""
-        return False
         # Any brightness means light is on.
         return self._hsbk[2] > 0
 
     @property
     def hs_color(self):
         """Return the hue and saturation color value [float, float]."""
-        return None
         h, s, _, _ = self._hsbk
-        h = h / 65535 * 360
-        s = s / 65535 * 100
         return (h, s) if s else None
 
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        return 0
-        return self._hsbk[2] / 65535 * 255
+        return self._hsbk[2]
 
     @property
     def color_temp(self):
         """Return the CT color value in mireds."""
-        return None
         _, s, _, k = self._hsbk
 
         # If we got a saturation value, it means that light has
@@ -229,25 +224,10 @@ class LIFXVirtualLight(LightEntity):
         # Avoid state ping-pong by holding off updates as the state settles
         time.sleep(0.3)
 
-    def update(self):
+    async def async_update(self):
         """Fetch new state data for this light."""
-        return
 
-        # We have no light, because we're starting up or because the
-        # light went offline earlier. Try to find it again by filtering
-        # the whole LAN.
-        if self._mz_light is None:
-            multizone_lights = lifx.get_multizone_lights()
-            _LOGGER.info("Found mz lights: " + str(len(multizone_lights)))
-            matching_lights = list(filter(lambda x: x.get_mac_addr() == self._target_mac_address, multizone_lights))
-            
-            if len(matching_lights) == 0:
-                _LOGGER.error("Did not find any matching light. Possibly offline? " + self._target_mac_address)
-                self._mz_light = None
-                self._available = False
-                return
-
-            self._mz_light = matching_lights[0]
+        color_zones = []
 
         # At this point, we should have a valid light (cached). Use
         # a try block to catch the exception, which means that the
@@ -255,10 +235,11 @@ class LIFXVirtualLight(LightEntity):
         # on the actual exception, but 99% is that and the only thing we
         # can do is to try the whole thing again anyway).
         try:
-            self._current_color_zones = self._mz_light.get_color_zones()
+            async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._reference):
+                if pkt | MultiZoneMessages.StateMultiZone:
+                    color_zones = pkt.payload.colors
         except:
-            _LOGGER.error("Received error while updating color zones. Possibly offline? " + self._target_mac_address)
-            self._mz_light = None
+            _LOGGER.error("Received error while updating color zones. Possibly offline? " + self._mac_address)
             self._available = False
             return
 
@@ -269,36 +250,31 @@ class LIFXVirtualLight(LightEntity):
         saturation_values = set()
         brightness_values = set()
         kelvin_values = set()
-        for zone in self._current_color_zones[self._zone_start:self._zone_end]:
-            hue_values.add(zone[0])
-            saturation_values.add(zone[1])
-            brightness_values.add(zone[2])
-            kelvin_values.add(zone[3])
+        for zone in color_zones:
+            hue_values.add(zone.hue)
+            saturation_values.add(zone.saturation)
+            brightness_values.add(zone.brightness)
+            kelvin_values.add(zone.kelvin)
 
         # Reduce the list to a single value. We mostly care
         # about the brightness here, to determine whether the
         # light is on. It's important the list is sorted.
         # For the others, we might get any value.
         h = sorted(list(hue_values))[-1]
-        s = sorted(list(saturation_values))[-1]
-        b = sorted(list(brightness_values))[-1]
+        s = saturation_photons_to_ha(sorted(list(saturation_values))[-1])
+        b = brightness_photons_to_ha(sorted(list(brightness_values))[-1])
         k = sorted(list(kelvin_values))[-1]
 
         self._hsbk = [h, s, b, k]
 
-        # Cache any running effect. Note that these are firmware
-        # effects. 0 is the hardcoded (by official LIFX LAN protocol)
-        # effect id.
-        try:
-            effect = self._mz_light.get_multizone_effect()
-            self._running_effect = effect["type"] != 0
-        except:
-            _LOGGER.error("Received error while updating firmware effect. Assuming no effects are running. " + self._target_mac_address)
-            self._running_effect = False
+def brightness_photons_to_ha(value):
+    return value * 255
 
-    def stop_running_effect_if_needed(self):
-        return
-        if self._running_effect:
-            self._mz_light.set_multizone_effect(0, 0, 500)
-            self._running_effect = False
+def brightness_ha_to_photons(value):
+    return value / 255
 
+def saturation_photons_to_ha(value):
+    return value * 100
+
+def saturation_ha_to_photons(value):
+    return value / 100
