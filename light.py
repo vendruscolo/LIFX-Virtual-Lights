@@ -94,9 +94,7 @@ class LIFXVirtualLight(LightEntity):
 
         # Cached values
         self._available = False
-        self._current_color_zones = []
         self._hsbk = HSBK(0, 0, 0, 0)
-        self._running_effect = False
 
     @property
     def name(self):
