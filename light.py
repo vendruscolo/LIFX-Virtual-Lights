@@ -24,6 +24,7 @@ import homeassistant.util.color as color_util
 
 from photons_app.executor import library_setup
 from photons_messages import DeviceMessages
+from photons_messages import LightMessages
 from photons_messages import MultiZoneMessages
 from photons_app.special import HardCodedSerials
 
@@ -155,9 +156,8 @@ class LIFXVirtualLight(LightEntity):
         """Return the coldest color_temp that this light supports."""
         return math.ceil(color_util.color_temperature_kelvin_to_mired(9000))
 
-    def turn_on(self, **kwargs):
+    async def async_turn_on(self, **kwargs):
         """Instruct the light to turn on."""
-        return
 
         # Grab the current state, and update that so it's consistent.
         h, s, b, k = self._hsbk
@@ -171,36 +171,35 @@ class LIFXVirtualLight(LightEntity):
         # color/brighthess. It's not possible to move from being off to a
         # different colored light.
         if b < 1:
-            b = self._turn_on_brightness / 255 * 65535
+            b = self._turn_on_brightness
 
         if ATTR_HS_COLOR in kwargs:
             hue, saturation = kwargs[ATTR_HS_COLOR]
-            h = int(hue / 360 * 65535)
-            s = int(saturation / 100 * 65535)
+            h = hue
+            s = saturation
             k = 3500
 
         if ATTR_BRIGHTNESS in kwargs:
-            b = kwargs[ATTR_BRIGHTNESS] / 255 * 65535
+            b = kwargs[ATTR_BRIGHTNESS]
 
         if ATTR_COLOR_TEMP in kwargs:
             s = 0
             k = math.ceil(color_util.color_temperature_mired_to_kelvin(kwargs[ATTR_COLOR_TEMP]))
 
-        self.stop_running_effect_if_needed()
+        b = brightness_ha_to_photons(b)
+        s = saturation_ha_to_photons(s)
 
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
         # Note that we're cheating here, we set the whole strip to the same
         # color (brightness 0) so it's faster. In the past we set each zone
         # brightness to 0, but that causes more network traffic.
-        if self._mz_light.get_power() < 1:
-            self._mz_light.set_color([h, s, 0, k])
-            self._mz_light.set_power(True)
-
-        self._mz_light.set_zone_color(self._zone_start, self._zone_end, [h, s, b, k], 500)
-
-        # Avoid state ping-pong by holding off updates as the state settles
-        time.sleep(0.3)
+        async for pkt in self._sender(DeviceMessages.GetPower(), self._reference):
+            if pkt | DeviceMessages.StatePower:
+                if pkt.payload.level < 1:
+                    await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
+                    await self._sender(DeviceMessages.SetPower(level=65535), self._reference)
+                await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k), self._reference)
 
     def turn_off(self, **kwargs):
         """Instruct the light to turn off."""
