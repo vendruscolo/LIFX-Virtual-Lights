@@ -26,6 +26,7 @@ from photons_app.executor import library_setup
 from photons_messages import DeviceMessages
 from photons_messages import LightMessages
 from photons_messages import MultiZoneMessages
+from photons_messages import MultiZoneEffectType
 from photons_app.special import HardCodedSerials
 
 from .const import (
@@ -192,6 +193,7 @@ class LIFXVirtualLight(LightEntity):
         # Note that we're cheating here, we set the whole strip to the same
         # color (brightness 0) so it's faster. In the past we set each zone
         # brightness to 0, but that causes more network traffic.
+        await self.async_stop_effects()
         async for pkt in self._sender(DeviceMessages.GetPower(), self._reference):
             if pkt | DeviceMessages.StatePower:
                 if pkt.payload.level < 1:
@@ -201,6 +203,8 @@ class LIFXVirtualLight(LightEntity):
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
+        await self.async_stop_effects()
+
         h, s, b, k = self._hsbk
         s = saturation_ha_to_photons(s)
 
@@ -269,6 +273,9 @@ class LIFXVirtualLight(LightEntity):
         k = sorted(list(kelvin_values))[-1]
 
         self._hsbk = HSBK(h, s, b, k)
+
+    async def async_stop_effects(self):
+        await self._sender(MultiZoneMessages.SetMultiZoneEffect(type=MultiZoneEffectType.OFF), self._reference)
 
 def brightness_photons_to_ha(value):
     return value * 255
