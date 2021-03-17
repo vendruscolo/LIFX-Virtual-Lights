@@ -35,7 +35,9 @@ from .const import (
     CONF_TARGET_LIGHT,
     CONF_ZONE_START,
     CONF_ZONE_END,
-    CONF_TURN_ON_BRIGHTNESS
+    CONF_TURN_ON_BRIGHTNESS,
+    CONF_TURN_ON_DURATION,
+    CONF_TURN_OFF_DURATION
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +51,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_ZONE_START): vol.Coerce(int),
     vol.Required(CONF_ZONE_END): vol.Coerce(int),
     vol.Optional(CONF_TURN_ON_BRIGHTNESS, default=255): vol.Coerce(int),
+    vol.Optional(CONF_TURN_ON_DURATION, default=0.5): vol.Coerce(float),
+    vol.Optional(CONF_TURN_OFF_DURATION, default=0.5): vol.Coerce(float),
 })
 
 HSBK = namedtuple('HSBK', ['h', 's', 'b', 'k'])
@@ -65,6 +69,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     zone_start = config[CONF_ZONE_START]
     zone_end = config[CONF_ZONE_END]
     turn_on_brightness = config[CONF_TURN_ON_BRIGHTNESS]
+    turn_on_duration = config[CONF_TURN_ON_DURATION]
+    turn_off_duration = config[CONF_TURN_OFF_DURATION]
 
     # Verify that passed in configuration works
     if zone_end < zone_start:
@@ -74,12 +80,12 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     reference = collector.reference_object(mac_address)
     sender = await lan_target.make_sender()
 
-    async_add_entities([LIFXVirtualLight(sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness)])
+    async_add_entities([LIFXVirtualLight(sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration)])
 
 
 class LIFXVirtualLight(LightEntity):
 
-    def __init__(self, sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness):
+    def __init__(self, sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration):
         """Initialize a Virtual Light."""
 
         # Deps
@@ -92,6 +98,8 @@ class LIFXVirtualLight(LightEntity):
         self._zone_start = zone_start
         self._zone_end = zone_end
         self._turn_on_brightness = turn_on_brightness
+        self._turn_on_duration = turn_on_duration
+        self._turn_off_duration = turn_off_duration
 
         # Cached values
         self._available = False
@@ -199,7 +207,7 @@ class LIFXVirtualLight(LightEntity):
                 if pkt.payload.level < 1:
                     await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
                     await self._sender(DeviceMessages.SetPower(level=65535), self._reference)
-                await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k), self._reference)
+                await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._reference)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -209,7 +217,7 @@ class LIFXVirtualLight(LightEntity):
         s = saturation_ha_to_photons(s)
 
         # Set the same HSBK, with a 0 brightness
-        await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
+        await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=0, kelvin=k, duration=self._turn_off_duration), self._reference)
 
         # At this point our zones are dark, we want to turn the whole strip
         # off if there's no zone lit. Get the full zones, and if there are
