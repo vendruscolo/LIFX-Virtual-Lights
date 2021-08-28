@@ -264,7 +264,14 @@ class LIFXVirtualLight(LightEntity):
                         kelvin_values.add(zone.kelvin)
         except:
             _LOGGER.error("Received error while updating color zones. Possibly offline? " + self._mac_address)
+
+            # We got an error. Disable this entity, and try to recreate the
+            # reference. Exceptions here are usually timeouts (device was
+            # working and went offline after HA started) or device isn't
+            # available at all (it was never discovered).
             self._available = False
+            self._reference = collector.reference_object(self._mac_address)
+            self._sender = await lan_target.make_sender()
             return
 
 
