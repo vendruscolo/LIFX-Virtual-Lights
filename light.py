@@ -38,7 +38,10 @@ from .const import (
     CONF_ZONE_END,
     CONF_TURN_ON_BRIGHTNESS,
     CONF_TURN_ON_DURATION,
-    CONF_TURN_OFF_DURATION
+    CONF_TURN_OFF_DURATION,
+    THEME_NONE,
+    THEME_PEACEFUL
+)
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -172,7 +175,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def effect_list(self):
         """Return the list of supported effects."""
-        return ["theme_peaceful", "theme_sunset"]
+        return [THEME_NONE, THEME_PEACEFUL]
 
     async def async_turn_on(self, **kwargs):
         """Instruct the light to turn on."""

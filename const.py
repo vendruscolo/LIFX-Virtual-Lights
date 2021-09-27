@@ -8,3 +8,6 @@ CONF_ZONE_END = "zone_end"
 CONF_TURN_ON_BRIGHTNESS = "turn_on_brightness"
 CONF_TURN_ON_DURATION = "turn_on_duration"
 CONF_TURN_OFF_DURATION = "turn_off_duration"
+
+THEME_NONE = "None"
+THEME_PEACEFUL = "Peaceful"
