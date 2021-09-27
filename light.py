@@ -9,7 +9,8 @@ import logging
 
 import voluptuous as vol
 
-import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_platform, service
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_HS_COLOR,
@@ -40,8 +41,10 @@ from .const import (
     CONF_TURN_ON_BRIGHTNESS,
     CONF_TURN_ON_DURATION,
     CONF_TURN_OFF_DURATION,
-    THEME_NONE,
-    THEME_PEACEFUL
+    SERVICE_SET_THEME,
+    SERVICE_SET_THEME_DATA_THEME_NAME,
+    THEME_PEACEFUL,
+    THEME_ENERGY
 )
 
 from .color_interpolation import interpolate
@@ -88,6 +91,14 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
     async_add_entities([LIFXVirtualLight(sender, reference, mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration)])
 
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SET_THEME,
+        {
+            vol.Required(SERVICE_SET_THEME_DATA_THEME_NAME): vol.In([THEME_PEACEFUL, THEME_ENERGY])
+        },
+        func="set_theme"
+    )
 
 class LIFXVirtualLight(LightEntity):
 
@@ -169,15 +180,19 @@ class LIFXVirtualLight(LightEntity):
         """Return the coldest color_temp that this light supports."""
         return math.ceil(color_util.color_temperature_kelvin_to_mired(9000))
 
-    @property
-    def effect(self):
-        """Return the current effect."""
-        return "theme_peaceful"
+    async def set_theme(self, theme_name):
+        colors = []
+        if theme_name == THEME_PEACEFUL:
+            colors = interpolate("#e96443", "#904e95", 80)
+        elif theme_name == THEME_ENERGY:
+            colors = interpolate("#16A085", "#F4D03F", 80)
+        else:
+            return
 
-    @property
-    def effect_list(self):
-        """Return the list of supported effects."""
-        return [THEME_NONE, THEME_PEACEFUL]
+        for i, color in enumerate(colors):
+            h, s, v = color_util.color_RGB_to_hsv(color[0], color[1], color[2])
+            b = self._turn_on_brightness
+            await self._sender(MultiZoneMessages.SetColorZones(start_index=i, end_index=i+1, hue=h, saturation=saturation_ha_to_photons (s), brightness=brightness_ha_to_photons(b), duration=self._turn_on_duration), self._reference)
 
     async def async_turn_on(self, **kwargs):
         """Instruct the light to turn on."""
@@ -212,10 +227,6 @@ class LIFXVirtualLight(LightEntity):
         b = brightness_ha_to_photons(b)
         s = saturation_ha_to_photons(s)
 
-        # Let's add a default theme so we don't duplicate the logic.
-        if ATTR_EFFECT not in kwargs:
-            kwargs[ATTR_EFFECT] = THEME_NONE
-
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
         # Note that we're cheating here, we set the whole strip to the same
@@ -228,14 +239,7 @@ class LIFXVirtualLight(LightEntity):
                     await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
                     await self._sender(DeviceMessages.SetPower(level=65535), self._reference)
 
-                if ATTR_EFFECT in kwargs:
-                    if kwargs[ATTR_EFFECT] == THEME_NONE:
-                        await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._reference)
-                    elif kwargs[ATTR_EFFECT] == THEME_PEACEFUL:
-                        colors = interpolate("#e96443", "#904e95", 80)
-                        for i, color in enumerate(colors):
-                            h, s, v = color_util.color_RGB_to_hsv(color[0], color[1], color[2])
-                            await self._sender(MultiZoneMessages.SetColorZones(start_index=i, end_index=i+1, hue=h, saturation=saturation_ha_to_photons (s), brightness=brightness_ha_to_photons(v), kelvin=k, duration=self._turn_on_duration), self._reference)
+                await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._reference)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""

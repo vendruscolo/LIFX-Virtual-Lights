@@ -9,5 +9,8 @@ CONF_TURN_ON_BRIGHTNESS = "turn_on_brightness"
 CONF_TURN_ON_DURATION = "turn_on_duration"
 CONF_TURN_OFF_DURATION = "turn_off_duration"
 
-THEME_NONE = "None"
+SERVICE_SET_THEME = "set_theme"
+SERVICE_SET_THEME_DATA_THEME_NAME = "theme_name"
+
 THEME_PEACEFUL = "Peaceful"
+THEME_ENERGY = "Energy"

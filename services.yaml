@@ -1,0 +1,17 @@
+set_theme:
+  name: Set theme
+  description: Sets a theme on the whole strip.
+  target:
+    entity:
+      integration: "lifx_virtual_lights"
+  fields:
+    theme_name:
+      name: Name
+      description: The name of the theme you want to apply
+      required: true
+      default: "Peaceful"
+      selector:
+        select:
+          options:
+            - "Peaceful"
+            - "Energy"
