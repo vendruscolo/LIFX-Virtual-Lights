@@ -18,6 +18,7 @@ from homeassistant.components.light import (
     SUPPORT_BRIGHTNESS,
     SUPPORT_COLOR,
     SUPPORT_COLOR_TEMP,
+    SUPPORT_EFFECT,
     LightEntity)
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 import homeassistant.util.color as color_util
@@ -123,7 +124,7 @@ class LIFXVirtualLight(LightEntity):
     @property
     def supported_features(self):
         """Flag supported features."""
-        return SUPPORT_BRIGHTNESS | SUPPORT_COLOR | SUPPORT_COLOR_TEMP
+        return SUPPORT_BRIGHTNESS | SUPPORT_COLOR | SUPPORT_COLOR_TEMP | SUPPORT_EFFECT
 
     @property
     def is_on(self):
@@ -163,6 +164,16 @@ class LIFXVirtualLight(LightEntity):
         """Return the coldest color_temp that this light supports."""
         return math.ceil(color_util.color_temperature_kelvin_to_mired(9000))
 
+    @property
+    def effect(self):
+        """Return the current effect."""
+        return "theme_peaceful"
+
+    @property
+    def effect_list(self):
+        """Return the list of supported effects."""
+        return ["theme_peaceful", "theme_sunset"]
+
     async def async_turn_on(self, **kwargs):
         """Instruct the light to turn on."""
 
@@ -195,6 +206,9 @@ class LIFXVirtualLight(LightEntity):
 
         b = brightness_ha_to_photons(b)
         s = saturation_ha_to_photons(s)
+
+        # if ATTR_EFFECT in kwargs:
+        # sceneid = self._light.get_id_from_scene_name(kwargs[ATTR_EFFECT])
 
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
