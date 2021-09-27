@@ -44,7 +44,7 @@ from .const import (
     THEME_PEACEFUL
 )
 
-from colour import Color
+from .color_interpolation import interpolate
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -232,9 +232,10 @@ class LIFXVirtualLight(LightEntity):
                     if kwargs[ATTR_EFFECT] == THEME_NONE:
                         await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._reference)
                     elif kwargs[ATTR_EFFECT] == THEME_PEACEFUL:
-                        colors = list(Color("#e96443").range_to(Color("#904e95"), 80))
+                        colors = interpolate("#e96443", "#904e95", 80)
                         for i, color in enumerate(colors):
-                            await self._sender(MultiZoneMessages.SetColorZones(start_index=i, end_index=i+1, hue=hue_colors_to_photons(color.hue), saturation=color.saturation, brightness=color.luminance, kelvin=k, duration=self._turn_on_duration), self._reference)
+                            h, s, v = color_util.color_RGB_to_hsv(color[0], color[1], color[2])
+                            await self._sender(MultiZoneMessages.SetColorZones(start_index=i, end_index=i+1, hue=h, saturation=saturation_ha_to_photons (s), brightness=brightness_ha_to_photons(v), kelvin=k, duration=self._turn_on_duration), self._reference)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -330,6 +331,3 @@ def saturation_photons_to_ha(value):
 
 def saturation_ha_to_photons(value):
     return value / 100
-
-def hue_colors_to_photons(value):
-    return value * 360
