@@ -14,6 +14,7 @@ from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_HS_COLOR,
     ATTR_COLOR_TEMP,
+    ATTR_EFFECT,
     PLATFORM_SCHEMA,
     SUPPORT_BRIGHTNESS,
     SUPPORT_COLOR,
@@ -42,7 +43,8 @@ from .const import (
     THEME_NONE,
     THEME_PEACEFUL
 )
-)
+
+from colour import Color
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -210,8 +212,9 @@ class LIFXVirtualLight(LightEntity):
         b = brightness_ha_to_photons(b)
         s = saturation_ha_to_photons(s)
 
-        # if ATTR_EFFECT in kwargs:
-        # sceneid = self._light.get_id_from_scene_name(kwargs[ATTR_EFFECT])
+        # Let's add a default theme so we don't duplicate the logic.
+        if ATTR_EFFECT not in kwargs:
+            kwargs[ATTR_EFFECT] = THEME_NONE
 
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
@@ -224,7 +227,14 @@ class LIFXVirtualLight(LightEntity):
                 if pkt.payload.level < 1:
                     await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._reference)
                     await self._sender(DeviceMessages.SetPower(level=65535), self._reference)
-                await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._reference)
+
+                if ATTR_EFFECT in kwargs:
+                    if kwargs[ATTR_EFFECT] == THEME_NONE:
+                        await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._reference)
+                    elif kwargs[ATTR_EFFECT] == THEME_PEACEFUL:
+                        colors = list(Color("#e96443").range_to(Color("#904e95"), 80))
+                        for i, color in enumerate(colors):
+                            await self._sender(MultiZoneMessages.SetColorZones(start_index=i, end_index=i+1, hue=hue_colors_to_photons(color.hue), saturation=color.saturation, brightness=color.luminance, kelvin=k, duration=self._turn_on_duration), self._reference)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -320,3 +330,6 @@ def saturation_photons_to_ha(value):
 
 def saturation_ha_to_photons(value):
     return value / 100
+
+def hue_colors_to_photons(value):
+    return value * 360
