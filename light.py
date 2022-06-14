@@ -23,12 +23,13 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 import homeassistant.util.color as color_util
 
 from photons_app.executor import library_setup
+from photons_app.special import HardCodedSerials
+from photons_control.multizone import SetZones
 from photons_messages import DeviceMessages
 from photons_messages import LightMessages
 from photons_messages import MultiZoneMessages
 from photons_messages import MultiZoneEffectType
 from photons_messages import protocol_register
-from photons_app.special import HardCodedSerials
 from photons_transport.targets import LanTarget
 
 from .const import (
@@ -206,7 +207,7 @@ class LIFXVirtualLight(LightEntity):
                     await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._mac_address)
                     await self._sender(DeviceMessages.SetPower(level=65535), self._mac_address)
 
-                await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=b, kelvin=k, duration=self._turn_on_duration), self._mac_address)
+                await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=self._turn_on_duration), self._mac_address)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -216,7 +217,7 @@ class LIFXVirtualLight(LightEntity):
         s = saturation_ha_to_photons(s)
 
         # Set the same HSBK, with a 0 brightness
-        await self._sender(MultiZoneMessages.SetColorZones(start_index=self._zone_start, end_index=self._zone_end, hue=h, saturation=s, brightness=0, kelvin=k, duration=self._turn_off_duration), self._mac_address)
+        await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": 0, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=self._turn_off_duration), self._mac_address)
 
         # At this point our zones are dark, we want to turn the whole strip
         # off if there's no zone lit. Get the full zones, and if there are
