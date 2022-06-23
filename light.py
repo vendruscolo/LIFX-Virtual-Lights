@@ -45,7 +45,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(seconds=5)
+FIND_TIMEOUT = 4
+SCAN_INTERVAL = timedelta(seconds=FIND_TIMEOUT + 1)
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
@@ -201,13 +202,13 @@ class LIFXVirtualLight(LightEntity):
         # color (brightness 0) so it's faster. In the past we set each zone
         # brightness to 0, but that causes more network traffic.
         await self.async_stop_effects()
-        async for pkt in self._sender(DeviceMessages.GetPower(), self._mac_address):
+        async for pkt in self._sender(DeviceMessages.GetPower(), self._mac_address, find_timeout=FIND_TIMEOUT):
             if pkt | DeviceMessages.StatePower:
                 if pkt.payload.level < 1:
-                    await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._mac_address)
-                    await self._sender(DeviceMessages.SetPower(level=65535), self._mac_address)
+                    await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._mac_address, find_timeout=FIND_TIMEOUT)
+                    await self._sender(DeviceMessages.SetPower(level=65535), self._mac_address, find_timeout=FIND_TIMEOUT)
 
-                await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=self._turn_on_duration), self._mac_address)
+                await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=self._turn_on_duration), self._mac_address, find_timeout=FIND_TIMEOUT)
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
@@ -217,7 +218,7 @@ class LIFXVirtualLight(LightEntity):
         s = saturation_ha_to_photons(s)
 
         # Set the same HSBK, with a 0 brightness
-        await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": 0, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=self._turn_off_duration), self._mac_address)
+        await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": 0, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=self._turn_off_duration), self._mac_address, find_timeout=FIND_TIMEOUT)
 
         # At this point our zones are dark, we want to turn the whole strip
         # off if there's no zone lit. Get the full zones, and if there are
@@ -225,14 +226,14 @@ class LIFXVirtualLight(LightEntity):
         # We request up to index 80 as LIFX Z have 8 zones/m and you can
         # chain up to 10m.
         any_zone_lit = False
-        async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=0, end_index=80), self._mac_address):
+        async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=0, end_index=80), self._mac_address, find_timeout=FIND_TIMEOUT):
             if pkt | MultiZoneMessages.StateMultiZone:
                 for zone in pkt.payload.colors:
                     if zone.brightness:
                         any_zone_lit = True
 
         if any_zone_lit == False:
-            await self._sender(DeviceMessages.SetPower(level=0), self._mac_address)
+            await self._sender(DeviceMessages.SetPower(level=0), self._mac_address, find_timeout=FIND_TIMEOUT)
 
     async def async_update(self):
         """Fetch new state data for this light."""
@@ -248,7 +249,7 @@ class LIFXVirtualLight(LightEntity):
         # on the actual exception, but 99% is that and the only thing we
         # can do is to try the whole thing again anyway).
         try:
-            async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._mac_address):
+            async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._mac_address, find_timeout=FIND_TIMEOUT):
                 if pkt | MultiZoneMessages.StateMultiZone:
                     # Photons is sending back zones grouped by 8. This means
                     # that we may receive more zones than we requested.
@@ -289,7 +290,7 @@ class LIFXVirtualLight(LightEntity):
         self._hsbk = HSBK(h, s, b, k)
 
     async def async_stop_effects(self):
-        await self._sender(MultiZoneMessages.SetMultiZoneEffect(type=MultiZoneEffectType.OFF), self._mac_address)
+        await self._sender(MultiZoneMessages.SetMultiZoneEffect(type=MultiZoneEffectType.OFF), self._mac_address, find_timeout=FIND_TIMEOUT)
 
 def brightness_photons_to_ha(value):
     return value * 255
