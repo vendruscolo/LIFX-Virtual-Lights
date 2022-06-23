@@ -235,6 +235,14 @@ class LIFXVirtualLight(LightEntity):
         if any_zone_lit == False:
             await self._sender(DeviceMessages.SetPower(level=0), self._mac_address, find_timeout=FIND_TIMEOUT)
 
+    def error_catcher(self, error):
+        # We got an error. Disable this entity, and hope it'll come
+        # back later. Exceptions here are usually timeouts (device was
+        # working and went offline after HA started) or device isn't
+        # available at all (it was never discovered).
+        self._available = False
+        _LOGGER.error(f"Received error while updating color zones for {self._mac_address}. Possibly offline? Error: {error}")
+
     async def async_update(self):
         """Fetch new state data for this light."""
 
@@ -248,35 +256,22 @@ class LIFXVirtualLight(LightEntity):
         # device is offline (well, it might mean something else depending
         # on the actual exception, but 99% is that and the only thing we
         # can do is to try the whole thing again anyway).
-        try:
-            async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._mac_address, find_timeout=FIND_TIMEOUT):
-                if pkt | MultiZoneMessages.StateMultiZone:
-                    # Photons is sending back zones grouped by 8. This means
-                    # that we may receive more zones than we requested.
-                    last_zone = len(pkt.payload.colors)
-                    end_zone = pkt.payload.zone_index + last_zone
-                    if end_zone > self._zone_end:
-                        last_zone = self._zone_end - pkt.payload.zone_index
+        async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
+            if pkt | MultiZoneMessages.StateMultiZone:
+                self._available = True
 
-                    for zone in pkt.payload.colors[0:last_zone]:
-                        hue_values.add(zone.hue)
-                        saturation_values.add(zone.saturation)
-                        brightness_values.add(zone.brightness)
-                        kelvin_values.add(zone.kelvin)
-        except:
-            _LOGGER.error("Received error while updating color zones. Possibly offline? " + self._mac_address)
+                # Photons is sending back zones grouped by 8. This means
+                # that we may receive more zones than we requested.
+                last_zone = len(pkt.payload.colors)
+                end_zone = pkt.payload.zone_index + last_zone
+                if end_zone > self._zone_end:
+                    last_zone = self._zone_end - pkt.payload.zone_index
 
-            # We got an error. Disable this entity, and hope it'll come
-            # back later. Exceptions here are usually timeouts (device was
-            # working and went offline after HA started) or device isn't
-            # available at all (it was never discovered).
-            self._available = False
-            await sender.forget(self._mac_address)
-            return
-
-
-        # Yay!
-        self._available = True
+                for zone in pkt.payload.colors[0:last_zone]:
+                    hue_values.add(zone.hue)
+                    saturation_values.add(zone.saturation)
+                    brightness_values.add(zone.brightness)
+                    kelvin_values.add(zone.kelvin)
 
         # Reduce the list to a single value. We mostly care
         # about the brightness here, to determine whether the
