@@ -226,9 +226,10 @@ class LIFXVirtualLight(LightEntity):
         # We request up to index 80 as LIFX Z have 8 zones/m and you can
         # chain up to 10m.
         any_zone_lit = False
-        async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=0, end_index=80), self._mac_address, find_timeout=FIND_TIMEOUT):
-            if pkt | MultiZoneMessages.StateMultiZone:
-                for zone in pkt.payload.colors:
+        plans = self._sender.make_plans("zones")
+        async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
+            if info is not self._sender.gatherer.Skip:
+                for zone in [z for _, z in sorted(info)]:
                     if zone.brightness:
                         any_zone_lit = True
 
