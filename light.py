@@ -256,18 +256,12 @@ class LIFXVirtualLight(LightEntity):
         # device is offline (well, it might mean something else depending
         # on the actual exception, but 99% is that and the only thing we
         # can do is to try the whole thing again anyway).
-        async for pkt in self._sender(MultiZoneMessages.GetColorZones(start_index=self._zone_start, end_index=self._zone_end), self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
-            if pkt | MultiZoneMessages.StateMultiZone:
+        plans = self._sender.make_plans("zones")
+        async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
+            if info is not self._sender.gatherer.Skip:
                 self._available = True
-
-                # Photons is sending back zones grouped by 8. This means
-                # that we may receive more zones than we requested.
-                last_zone = len(pkt.payload.colors)
-                end_zone = pkt.payload.zone_index + last_zone
-                if end_zone > self._zone_end:
-                    last_zone = self._zone_end - pkt.payload.zone_index
-
-                for zone in pkt.payload.colors[0:last_zone]:
+                zones = [z for _, z in sorted(info)]
+                for zone in zones[self._zone_start:self._zone_end]:
                     hue_values.add(zone.hue)
                     saturation_values.add(zone.saturation)
                     brightness_values.add(zone.brightness)
