@@ -247,10 +247,10 @@ class LIFXVirtualLight(LightEntity):
     async def async_update(self):
         """Fetch new state data for this light."""
 
-        hue_values = set()
-        saturation_values = set()
-        brightness_values = set()
-        kelvin_values = set()
+        h = 0
+        s = 0
+        b = 0
+        k = 0
 
         # This will request all zones in the light strip, even those that
         # are outside of the virtual light. Make sure to only read info
@@ -261,21 +261,12 @@ class LIFXVirtualLight(LightEntity):
                 self._available = True
                 zones = [z for _, z in sorted(info)]
                 for zone in zones[self._zone_start:self._zone_end]:
-                    hue_values.add(zone.hue)
-                    saturation_values.add(zone.saturation)
-                    brightness_values.add(zone.brightness)
-                    kelvin_values.add(zone.kelvin)
+                    h = max(h, zone.hue)
+                    s = max(s, zone.saturation)
+                    b = max(b, zone.brightness)
+                    k = max(k, zone.kelvin)
 
-        # Reduce the list to a single value. We mostly care
-        # about the brightness here, to determine whether the
-        # light is on. It's important the list is sorted.
-        # For the others, we might get any value.
-        h = sorted(list(hue_values))[-1]
-        s = saturation_photons_to_ha(sorted(list(saturation_values))[-1])
-        b = brightness_photons_to_ha(sorted(list(brightness_values))[-1])
-        k = sorted(list(kelvin_values))[-1]
-
-        self._hsbk = HSBK(h, s, b, k)
+        self._hsbk = HSBK(h, saturation_photons_to_ha(s), brightness_photons_to_ha(b), k)
 
     async def async_stop_effects(self):
         await self._sender(MultiZoneMessages.SetMultiZoneEffect(type=MultiZoneEffectType.OFF), self._mac_address, find_timeout=FIND_TIMEOUT)
