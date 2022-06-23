@@ -223,8 +223,8 @@ class LIFXVirtualLight(LightEntity):
         # At this point our zones are dark, we want to turn the whole strip
         # off if there's no zone lit. Get the full zones, and if there are
         # no zones lit, turn the whole thing off.
-        # We request up to index 80 as LIFX Z have 8 zones/m and you can
-        # chain up to 10m.
+        # (This will request all zones in the light strip, even those that
+        # are outside of the virtual light.)
         any_zone_lit = False
         plans = self._sender.make_plans("zones")
         async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
@@ -252,11 +252,9 @@ class LIFXVirtualLight(LightEntity):
         brightness_values = set()
         kelvin_values = set()
 
-        # At this point, we should have a valid light (cached). Use
-        # a try block to catch the exception, which means that the
-        # device is offline (well, it might mean something else depending
-        # on the actual exception, but 99% is that and the only thing we
-        # can do is to try the whole thing again anyway).
+        # This will request all zones in the light strip, even those that
+        # are outside of the virtual light. Make sure to only read info
+        # for the correct zone range.
         plans = self._sender.make_plans("zones")
         async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
             if info is not self._sender.gatherer.Skip:
