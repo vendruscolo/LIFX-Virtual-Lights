@@ -270,6 +270,7 @@ class LIFXVirtualLight(LightEntity):
             # working and went offline after HA started) or device isn't
             # available at all (it was never discovered).
             self._available = False
+            await sender.forget(self._mac_address)
             return
 
 
