@@ -4,6 +4,6 @@
   "documentation": "https://github.com/home-assistant/example-custom-config/tree/master/custom_components/example_light/",
   "dependencies": [],
   "codeowners": [],
-  "requirements": ["git+https://github.com/vendruscolo/photons.git@fix-install"],
+  "requirements": ["lifx-photons-core"],
   "version": "1.0.0"
 }
