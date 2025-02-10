@@ -86,6 +86,7 @@ class LightMiddleware:
     sender_instances = {}
     zones_data = {}
     zones_data_timestamps = {}
+    zones_updating = {}
 
     @classmethod
     async def create(cls, mac_address, zone_start, zone_end):
@@ -106,10 +107,13 @@ class LightMiddleware:
         self._available = False # Assume not available until we get an update
 
         if mac_address not in LightMiddleware.zones_data:
-                LightMiddleware.zones_data[mac_address] = []
+            LightMiddleware.zones_data[mac_address] = []
 
         if mac_address not in LightMiddleware.zones_data_timestamps:
-                LightMiddleware.zones_data_timestamps[mac_address] = time.time()
+            LightMiddleware.zones_data_timestamps[mac_address] = time.time()
+
+        if mac_address not in LightMiddleware.zones_updating:
+            LightMiddleware.zones_updating[mac_address] = False
 
     @property
     def unique_id(self):
@@ -118,8 +122,12 @@ class LightMiddleware:
 
     async def update(self):
         diff = time.time() - LightMiddleware.zones_data_timestamps[self._mac_address]
-        if diff < SCAN_INTERVAL.total_seconds():
+        is_updating = LightMiddleware.zones_updating[self._mac_address]
+
+        if diff < SCAN_INTERVAL.total_seconds() or is_updating:
             return LightMiddleware.zones_data[self._mac_address][self._zone_start:self._zone_end]
+
+        LightMiddleware.zones_updating[self._mac_address] = True
 
         # This will request all zones in the light strip, even those that
         # are outside of the virtual light. Make sure to only read info
@@ -132,9 +140,13 @@ class LightMiddleware:
                 LightMiddleware.zones_data[self._mac_address] = zones
                 LightMiddleware.zones_data_timestamps[self._mac_address] = time.time()
 
+        LightMiddleware.zones_updating[self._mac_address] = False
+
         return LightMiddleware.zones_data[self._mac_address][self._zone_start:self._zone_end]
 
     async def turn_on(self, h, s, b, k, duration):
+        LightMiddleware.zones_updating[self._mac_address] = True
+
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
         # Note that we're cheating here, we set the whole strip to the same
@@ -149,8 +161,11 @@ class LightMiddleware:
 
                 await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
 
-    
+        LightMiddleware.zones_updating[self._mac_address] = False
+
     async def turn_off(self, h, s, k, duration):
+        LightMiddleware.zones_updating[self._mac_address] = True
+
         await self.async_stop_effects()
 
         # Set the same HSBK, with a 0 brightness
@@ -175,6 +190,8 @@ class LightMiddleware:
 
         if any_zone_lit == False:
             await self._sender(DeviceMessages.SetPower(level=0), self._mac_address, find_timeout=FIND_TIMEOUT)
+
+        LightMiddleware.zones_updating[self._mac_address] = False
 
     async def async_stop_effects(self):
         await self._sender(MultiZoneMessages.SetMultiZoneEffect(type=MultiZoneEffectType.OFF), self._mac_address, find_timeout=FIND_TIMEOUT)
