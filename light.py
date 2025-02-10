@@ -103,10 +103,10 @@ class LightDevice:
         self._last_update = time.time()
         self._zones_data = []
 
-    async def update(self):
+    async def update(self, force_update=False):
         diff = time.time() - self._last_update
 
-        if diff < SCAN_INTERVAL.total_seconds() or self._updating:
+        if not force_update and (diff < SCAN_INTERVAL.total_seconds() or self._updating):
             return self._zones_data
 
         self._updating = True
@@ -154,16 +154,10 @@ class LightDevice:
         # off if there's no zone lit. Get the full zones, and if there are
         # no zones lit, turn the whole thing off.
         any_zone_lit = False
-        plans = self._sender.make_plans("zones")
-        async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
-            if info is not self._sender.gatherer.Skip:
-                self._available = True
-                zones = [z for _, z in sorted(info)]
-                self._zones_data = zones
-                self._last_update = time.time()
-                for zone in zones:
-                    if zone.brightness:
-                        any_zone_lit = True
+        zones = await self.update(force_update=True)
+        for zone in zones:
+            if zone.brightness:
+                any_zone_lit = True
 
         if any_zone_lit == False:
             await self._sender(DeviceMessages.SetPower(level=0), self._mac_address, find_timeout=FIND_TIMEOUT)
