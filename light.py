@@ -61,6 +61,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 HSBK = namedtuple('HSBK', ['h', 's', 'b', 'k'])
 
+lan_target = LanTarget.create({"protocol_register": protocol_register, "final_future": asyncio.Future()})
+light_devices = {}
+
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     # Assign configuration variables.
     # The configuration check takes care they are present.
@@ -78,74 +81,50 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         _LOGGER.error("Zone end must be greater than or equal to zone start")
         return
 
-    entity = await LIFXVirtualLight.create(mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration)
+    if mac_address not in light_devices:
+        sender = await lan_target.make_sender()
+        light_device = await LightDevice.create(sender, mac_address)
+        light_devices[mac_address] = light_device
+
+    entity = await LIFXVirtualLight.create(light_devices[mac_address], name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration)
     async_add_entities([entity])
 
-class LightMiddleware:
-    target = LanTarget.create({"protocol_register": protocol_register, "final_future": asyncio.Future()})
-    sender_instances = {}
-    zones_data = {}
-    zones_data_timestamps = {}
-    zones_updating = {}
-
+class LightDevice:
     @classmethod
-    async def create(cls, mac_address, zone_start, zone_end):
-        self = cls(mac_address, zone_start, zone_end)
-
-        if mac_address not in LightMiddleware.sender_instances:
-            sender = await LightMiddleware.target.make_sender()
-            LightMiddleware.sender_instances[mac_address] = sender
-
-        self._sender = LightMiddleware.sender_instances[mac_address]
-
+    async def create(cls, sender, mac_address):
+        self = cls(sender, mac_address)
         return self
 
-    def __init__(self, mac_address, zone_start, zone_end):
+    def __init__(self, sender, mac_address):
+        self._sender = sender
         self._mac_address = mac_address
-        self._zone_start = zone_start
-        self._zone_end = zone_end
-        self._available = False # Assume not available until we get an update
-
-        if mac_address not in LightMiddleware.zones_data:
-            LightMiddleware.zones_data[mac_address] = []
-
-        if mac_address not in LightMiddleware.zones_data_timestamps:
-            LightMiddleware.zones_data_timestamps[mac_address] = time.time()
-
-        if mac_address not in LightMiddleware.zones_updating:
-            LightMiddleware.zones_updating[mac_address] = False
-
-    @property
-    def unique_id(self):
-        """Return the unique id of this light."""
-        return self._mac_address + "|" + str(self._zone_start) + "|" + str(self._zone_end)
+        self._available = False
+        self._updating = False
+        self._last_update = time.time()
+        self._zones_data = []
 
     async def update(self):
-        diff = time.time() - LightMiddleware.zones_data_timestamps[self._mac_address]
-        is_updating = LightMiddleware.zones_updating[self._mac_address]
+        diff = time.time() - self._last_update
 
-        if diff < SCAN_INTERVAL.total_seconds() or is_updating:
-            return LightMiddleware.zones_data[self._mac_address][self._zone_start:self._zone_end]
+        if diff < SCAN_INTERVAL.total_seconds() or self._updating:
+            return self._zones_data
 
-        LightMiddleware.zones_updating[self._mac_address] = True
+        self._updating = True
 
-        # This will request all zones in the light strip, even those that
-        # are outside of the virtual light. Make sure to only read info
-        # for the correct zone range.
         plans = self._sender.make_plans("zones")
         async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
             if info is not self._sender.gatherer.Skip:
                 self._available = True
                 zones = [z for _, z in sorted(info)]
-                LightMiddleware.zones_data[self._mac_address] = zones
-                LightMiddleware.zones_data_timestamps[self._mac_address] = time.time()
+                self._zones_data = zones
+                self._last_update = time.time()
 
-        LightMiddleware.zones_updating[self._mac_address] = False
+        self._updating = False
 
-        return LightMiddleware.zones_data[self._mac_address][self._zone_start:self._zone_end]
+        return self._zones_data
 
-    async def turn_on(self, h, s, b, k, duration):
-        LightMiddleware.zones_updating[self._mac_address] = True
+    async def turn_on(self, h, s, b, k, zone_start, zone_end, duration):
+        self._updating = True
 
         # If the ligth was turned off, we want to power it and start
         # with all zones dimmed down.
@@ -159,31 +138,29 @@ class LightMiddleware:
                     await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._mac_address, find_timeout=FIND_TIMEOUT)
                     await self._sender(DeviceMessages.SetPower(level=65535), self._mac_address, find_timeout=FIND_TIMEOUT)
 
-                await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
+                await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, zone_end - zone_start + 1]], zone_index=zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
 
-        LightMiddleware.zones_updating[self._mac_address] = False
+        self._updating = False
 
-    async def turn_off(self, h, s, k, duration):
-        LightMiddleware.zones_updating[self._mac_address] = True
+    async def turn_off(self, h, s, k, zone_start, zone_end, duration):
+        self._updating = True
 
         await self.async_stop_effects()
 
         # Set the same HSBK, with a 0 brightness
-        await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": 0, "kelvin": k}, self._zone_end - self._zone_start + 1]], zone_index=self._zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
+        await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": 0, "kelvin": k}, zone_end - zone_start + 1]], zone_index=zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
 
         # At this point our zones are dark, we want to turn the whole strip
         # off if there's no zone lit. Get the full zones, and if there are
         # no zones lit, turn the whole thing off.
-        # (This will request all zones in the light strip, even those that
-        # are outside of the virtual light.)
         any_zone_lit = False
         plans = self._sender.make_plans("zones")
         async for _, _, info in self._sender.gatherer.gather(plans, self._mac_address, find_timeout=FIND_TIMEOUT, error_catcher=self.error_catcher):
             if info is not self._sender.gatherer.Skip:
                 self._available = True
                 zones = [z for _, z in sorted(info)]
-                LightMiddleware.zones_data[self._mac_address] = zones
-                LightMiddleware.zones_data_timestamps[self._mac_address] = time.time()
+                self._zones_data = zones
+                self._last_update = time.time()
                 for zone in zones:
                     if zone.brightness:
                         any_zone_lit = True
@@ -191,7 +168,7 @@ class LightMiddleware:
         if any_zone_lit == False:
             await self._sender(DeviceMessages.SetPower(level=0), self._mac_address, find_timeout=FIND_TIMEOUT)
 
-        LightMiddleware.zones_updating[self._mac_address] = False
+        self._updating = False
 
     async def async_stop_effects(self):
         await self._sender(MultiZoneMessages.SetMultiZoneEffect(type=MultiZoneEffectType.OFF), self._mac_address, find_timeout=FIND_TIMEOUT)
@@ -206,16 +183,20 @@ class LightMiddleware:
 
 class LIFXVirtualLight(LightEntity):
     @classmethod
-    async def create(cls, mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration):
-        self = cls(mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration)
-        self._middleware = await LightMiddleware.create(mac_address, zone_start, zone_end)
+    async def create(cls, light_device, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration):
+        self = cls(light_device, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration)
         return self
 
-    def __init__(self, mac_address, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration):
+    def __init__(self, light_device, name, zone_start, zone_end, turn_on_brightness, turn_on_duration, turn_off_duration):
         """Initialize a Virtual Light."""
+
+        # Deps
+        self._light_device = light_device
 
         # Conf
         self._name = name
+        self._zone_start = zone_start
+        self._zone_end = zone_end
         self._turn_on_brightness = turn_on_brightness
         self._turn_on_duration = turn_on_duration
         self._turn_off_duration = turn_off_duration
@@ -231,12 +212,12 @@ class LIFXVirtualLight(LightEntity):
     @property
     def unique_id(self):
         """Return the unique id of this light."""
-        return self._middleware.unique_id
+        return self._light_device._mac_address + "|" + str(self._zone_start) + "|" + str(self._zone_end)
 
     @property
     def available(self):
         """Indicate if Home Assistant is able to read the state and control the underlying device."""
-        return self._middleware._available
+        return self._light_device._available
 
     @property
     def supported_features(self):
@@ -315,7 +296,7 @@ class LIFXVirtualLight(LightEntity):
         b = brightness_ha_to_photons(b)
         s = saturation_ha_to_photons(s)
 
-        await self._middleware.turn_on(h, s, b, k, self._turn_on_duration)
+        await self._light_device.turn_on(h, s, b, k, self._zone_start, self._zone_end, self._turn_on_duration)
 
 
     async def async_turn_off(self, **kwargs):
@@ -323,7 +304,7 @@ class LIFXVirtualLight(LightEntity):
         h, s, b, k = self._hsbk
         s = saturation_ha_to_photons(s)
 
-        await self._middleware.turn_off(h, s, k, self._turn_off_duration)
+        await self._light_device.turn_off(h, s, k, self._zone_start, self._zone_end, self._turn_off_duration)
 
     async def async_update(self):
         """Fetch new state data for this light."""
@@ -333,8 +314,8 @@ class LIFXVirtualLight(LightEntity):
         b = 0
         k = 0
 
-        zones = await self._middleware.update()
-        for zone in zones:
+        zones = await self._light_device.update()
+        for zone in zones[self._zone_start:self._zone_end]:
             h = max(h, zone.hue)
             s = max(s, zone.saturation)
             b = max(b, zone.brightness)
