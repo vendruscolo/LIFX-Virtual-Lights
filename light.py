@@ -138,7 +138,13 @@ class LightDevice:
                     await self._sender(LightMessages.SetColor(hue=h, saturation=s, brightness=0, kelvin=k), self._mac_address, find_timeout=FIND_TIMEOUT)
                     await self._sender(DeviceMessages.SetPower(level=65535), self._mac_address, find_timeout=FIND_TIMEOUT)
 
-                await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": b, "kelvin": k}, zone_end - zone_start + 1]], zone_index=zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
+                # Send the zone data
+                zone_data = {"hue": h, "saturation": s, "brightness": b, "kelvin": k}
+                await self._sender(SetZones([[zone_data, zone_end - zone_start + 1]], zone_index=zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
+
+                # And immeediately update the cache
+                self._zones_data[zone_start:zone_end + 1] = [zone_data] * (zone_end - zone_start + 1)
+                self._last_update = time.time()
 
         self._updating = False
 
@@ -148,7 +154,12 @@ class LightDevice:
         await self.async_stop_effects()
 
         # Set the same HSBK, with a 0 brightness
-        await self._sender(SetZones([[{"hue": h, "saturation": s, "brightness": 0, "kelvin": k}, zone_end - zone_start + 1]], zone_index=zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
+        zone_data = {"hue": h, "saturation": s, "brightness": 0, "kelvin": k}
+        await self._sender(SetZones([[zone_data, zone_end - zone_start + 1]], zone_index=zone_start, duration=duration), self._mac_address, find_timeout=FIND_TIMEOUT)
+
+        # And immeediately update the cache
+        self._zones_data[zone_start:zone_end + 1] = [zone_data] * (zone_end - zone_start + 1)
+        self._last_update = time.time()
 
         # At this point our zones are dark, we want to turn the whole strip
         # off if there's no zone lit. Get the full zones, and if there are
